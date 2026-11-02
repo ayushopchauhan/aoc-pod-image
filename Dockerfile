@@ -1,4 +1,4 @@
-# Ready-made pod for AOC reels and AI clips: video render tools plus ComfyUI, no model weights.
+# Ready-made pod for AOC reels and AI clips: video render tools, ComfyUI, and voice tools (Whisper large-v3 weights included).
 FROM runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
@@ -31,6 +31,10 @@ RUN pip freeze | grep -iE '^(torch|torchvision|torchaudio)==' > /opt/torch-pins.
     && for d in */; do [ -f "$d/requirements.txt" ] && pip install -c /opt/torch-pins.txt -r "$d/requirements.txt" || true; done \
     && pip install -c /opt/torch-pins.txt gguf onnx "transformers==4.57.3" "diffusers==0.35.2" \
     && python -c "import torch; print('torch', torch.__version__)"
+
+# Voice tools: speaker separation (pyannote) and word timestamps (faster-whisper), plus the large-v3 weights baked in.
+# The gated pyannote model is NOT baked in (public image); it downloads in seconds with an HF token at run time.
+RUN pip install -c /opt/torch-pins.txt pyannote.audio==4.0.4 faster-whisper==1.2.1 soundfile hf_transfer torchcodec==0.7.0     && python -c "from faster_whisper import download_model; print(download_model('large-v3', cache_dir='/opt/whisper'))"     && python -c "import torch, pyannote.audio, faster_whisper; print('voice ok', torch.__version__)"
 
 COPY start-comfy.sh /opt/start-comfy.sh
 RUN chmod +x /opt/start-comfy.sh
