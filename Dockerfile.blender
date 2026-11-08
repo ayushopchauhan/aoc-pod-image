@@ -1,10 +1,10 @@
-# Lean pod for the 3D boardroom: Blender 5.2.1 (same as the laptop), Hunyuan3D-2 image to 3D with weights baked in, rembg, Rhubarb.
+# Lean pod for the 3D boardroom: Blender 5.2.1 (same as the laptop), Hunyuan3D-2 image to 3D (weights on the network volume), rembg, Rhubarb.
 # transformers stays below 5: version 5 renamed the DINOv2 layers and Hunyuan's weights stop loading.
 # Kept separate from the main image so pods pull only what this job needs.
 FROM runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/opt/hf U2NET_HOME=/opt/u2net HY3DGEN_MODELS=/opt/hy3dgen \
+    HF_HOME=/opt/hf U2NET_HOME=/workspace/u2net HY3DGEN_MODELS=/workspace/hy3dgen \
     TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
 
 # System tools plus the libraries headless Blender needs
@@ -37,17 +37,10 @@ RUN nvcc --version \
     && cd ../differentiable_renderer && pip install --no-build-isolation . \
     && python -c "import torch, hy3dgen.shapegen, custom_rasterizer; print('hy3d ok', torch.__version__)"
 
-# Weights baked in where hy3dgen looks first (HY3DGEN_MODELS), so nothing downloads at run time: shape (fp16), delight and paint. Skips the .bin and .ckpt copies that have a safetensors twin.
-# One RUN per piece: a pod pulls separate layers side by side, while one 14 GB layer crawled for over 10 minutes.
+# Weights live on the RunPod network volume, not in the image, so pods boot fast. fetch_weights.py fills it once.
+# The build downloads them to /tmp, proves the shape model loads, then deletes them in the same step so the image stays small.
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
-ARG HY=/opt/hy3dgen/tencent/Hunyuan3D-2
-RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['config.json','hunyuan3d-dit-v2-0/config.yaml','hunyuan3d-dit-v2-0/model.fp16.safetensors'], local_dir='$HY')"
-RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-paint-v2-0/unet/*'], ignore_patterns=['*.bin'], local_dir='$HY')"
-RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*','*/vae/*.bin'], local_dir='$HY')"
-RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-delight-v2-0/unet/*'], local_dir='$HY')"
-RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-delight-v2-0/*'], ignore_patterns=['*/unet/*'], local_dir='$HY')"
-RUN python -c "from hy3dgen.rembg import BackgroundRemover; BackgroundRemover()" \
-    && python -c "from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline as P; P.from_pretrained('tencent/Hunyuan3D-2', subfolder='hunyuan3d-dit-v2-0', variant='fp16', use_safetensors=True, device='cpu'); print('shape model loads ok')" \
-    && du -sh /opt/hy3dgen /opt/u2net
+COPY fetch_weights.py /opt/fetch_weights.py
+RUN HY3DGEN_MODELS=/tmp/hy U2NET_HOME=/tmp/u2 python /opt/fetch_weights.py     && HY3DGEN_MODELS=/tmp/hy python -c "from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline as P; P.from_pretrained('tencent/Hunyuan3D-2', subfolder='hunyuan3d-dit-v2-0', variant='fp16', use_safetensors=True, device='cpu'); print('shape model loads ok')"     && rm -rf /tmp/hy /tmp/u2 /root/.cache
 
 # CMD stays the base image's /start.sh, so SSH and Jupyter keep working.

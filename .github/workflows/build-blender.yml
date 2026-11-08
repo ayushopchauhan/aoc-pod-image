@@ -3,7 +3,7 @@ name: Build and push blender image
 on:
   push:
     branches: [main]
-    paths: ['Dockerfile.blender', '.github/workflows/build-blender.yml']
+    paths: ['Dockerfile.blender', 'fetch_weights.py', '.github/workflows/build-blender.yml']
   workflow_dispatch:
 
 permissions:

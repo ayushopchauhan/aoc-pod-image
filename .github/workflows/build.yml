@@ -3,7 +3,7 @@ name: Build and push image
 on:
   push:
     branches: [main]
-    paths-ignore: ['Dockerfile.blender', '.github/workflows/build-blender.yml']
+    paths-ignore: ['Dockerfile.blender', 'fetch_weights.py', '.github/workflows/build-blender.yml']
   workflow_dispatch:
 
 permissions:
