@@ -1,4 +1,5 @@
 # Lean pod for the 3D boardroom: Blender 5.2.1 (same as the laptop), Hunyuan3D-2 image to 3D with weights baked in, rembg, Rhubarb.
+# transformers stays below 5: version 5 renamed the DINOv2 layers and Hunyuan's weights stop loading.
 # Kept separate from the main image so pods pull only what this job needs.
 FROM runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
 
