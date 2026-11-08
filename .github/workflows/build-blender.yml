@@ -38,3 +38,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE }}:blender,${{ env.IMAGE }}:blender-${{ env.TAG }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:blender-cache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:blender-cache,mode=max
