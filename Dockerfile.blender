@@ -38,10 +38,15 @@ RUN nvcc --version \
     && python -c "import torch, hy3dgen.shapegen, custom_rasterizer; print('hy3d ok', torch.__version__)"
 
 # Weights baked in where hy3dgen looks first (HY3DGEN_MODELS), so nothing downloads at run time: shape (fp16), delight and paint. Skips the .bin and .ckpt copies that have a safetensors twin.
-RUN HF_HUB_ENABLE_HF_TRANSFER=1 python -c "from huggingface_hub import snapshot_download as s; \
-s('tencent/Hunyuan3D-2', allow_patterns=['config.json','hunyuan3d-dit-v2-0/config.yaml','hunyuan3d-dit-v2-0/model.fp16.safetensors', \
-'hunyuan3d-delight-v2-0/*','hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*.bin','*/vae/*.bin','*.ckpt'], local_dir='/opt/hy3dgen/tencent/Hunyuan3D-2')" \
-    && python -c "from hy3dgen.rembg import BackgroundRemover; BackgroundRemover()" \
+# One RUN per piece: a pod pulls separate layers side by side, while one 14 GB layer crawled for over 10 minutes.
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ARG HY=/opt/hy3dgen/tencent/Hunyuan3D-2
+RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['config.json','hunyuan3d-dit-v2-0/config.yaml','hunyuan3d-dit-v2-0/model.fp16.safetensors'], local_dir='$HY')"
+RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-paint-v2-0/unet/*'], ignore_patterns=['*.bin'], local_dir='$HY')"
+RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*','*/vae/*.bin'], local_dir='$HY')"
+RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-delight-v2-0/unet/*'], local_dir='$HY')"
+RUN python -c "from huggingface_hub import snapshot_download as s; s('tencent/Hunyuan3D-2', allow_patterns=['hunyuan3d-delight-v2-0/*'], ignore_patterns=['*/unet/*'], local_dir='$HY')"
+RUN python -c "from hy3dgen.rembg import BackgroundRemover; BackgroundRemover()" \
     && python -c "from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline as P; P.from_pretrained('tencent/Hunyuan3D-2', subfolder='hunyuan3d-dit-v2-0', variant='fp16', use_safetensors=True, device='cpu'); print('shape model loads ok')" \
     && du -sh /opt/hy3dgen /opt/u2net
 
