@@ -1,0 +1,46 @@
+# Lean pod for the 3D boardroom: Blender 5.2.1 (same as the laptop), Hunyuan3D-2 image to 3D with weights baked in, rembg, Rhubarb.
+# Kept separate from the main image so pods pull only what this job needs.
+FROM runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/opt/hf U2NET_HOME=/opt/u2net \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
+
+# System tools plus the libraries headless Blender needs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg curl wget git ca-certificates xz-utils unzip \
+      libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 libsm6 libice6 libx11-6 libxext6 \
+      libgl1 libegl1 libglu1-mesa \
+    && rm -rf /var/lib/apt/lists/*
+
+# Blender 5.2.1, so .blend files open the same here and on the laptop
+ARG BLENDER=5.2.1
+RUN curl -fsSL https://download.blender.org/release/Blender5.2/blender-${BLENDER}-linux-x64.tar.xz | tar -xJ -C /opt \
+    && ln -s /opt/blender-${BLENDER}-linux-x64/blender /usr/local/bin/blender \
+    && blender -b --factory-startup --python-expr "import bpy; print('blender ok', bpy.app.version_string)"
+
+# Rhubarb Lip Sync
+RUN curl -fsSL -o /tmp/rh.zip https://github.com/DanielSWolf/rhubarb-lip-sync/releases/download/v1.13.0/Rhubarb-Lip-Sync-1.13.0-Linux.zip \
+    && unzip -q /tmp/rh.zip -d /opt && rm /tmp/rh.zip \
+    && ln -s /opt/Rhubarb-Lip-Sync-1.13.0-Linux/rhubarb /usr/local/bin/rhubarb && rhubarb --version
+
+# Hunyuan3D-2: code, the two CUDA extensions for texturing, and rembg
+RUN nvcc --version \
+    && pip freeze | grep -iE '^(torch|torchvision|torchaudio)==' > /opt/torch-pins.txt \
+    && git clone --depth 1 https://github.com/Tencent-Hunyuan/Hunyuan3D-2 /opt/Hunyuan3D-2 \
+    && cd /opt/Hunyuan3D-2 \
+    && pip install -c /opt/torch-pins.txt -r requirements.txt \
+    && pip install -c /opt/torch-pins.txt -e . \
+    && pip install -c /opt/torch-pins.txt rembg onnxruntime huggingface_hub hf_transfer pybind11 \
+    && cd hy3dgen/texgen/custom_rasterizer && pip install --no-build-isolation . \
+    && cd ../differentiable_renderer && pip install --no-build-isolation . \
+    && python -c "import torch, hy3dgen.shapegen, custom_rasterizer; print('hy3d ok', torch.__version__)"
+
+# Weights baked in: shape (fp16), delight and paint. Skips the .bin and .ckpt copies that have a safetensors twin.
+RUN HF_HUB_ENABLE_HF_TRANSFER=1 python -c "from huggingface_hub import snapshot_download as s; \
+s('tencent/Hunyuan3D-2', allow_patterns=['config.json','hunyuan3d-dit-v2-0/config.yaml','hunyuan3d-dit-v2-0/model.fp16.safetensors', \
+'hunyuan3d-delight-v2-0/*','hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*.bin','*/vae/*.bin','*.ckpt'])" \
+    && python -c "from rembg import new_session; new_session('u2net')" \
+    && du -sh /opt/hf /opt/u2net
+
+# CMD stays the base image's /start.sh, so SSH and Jupyter keep working.
