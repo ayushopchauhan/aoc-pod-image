@@ -3,7 +3,7 @@
 FROM runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/opt/hf U2NET_HOME=/opt/u2net \
+    HF_HOME=/opt/hf U2NET_HOME=/opt/u2net HY3DGEN_MODELS=/opt/hy3dgen \
     TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
 
 # System tools plus the libraries headless Blender needs
@@ -36,11 +36,11 @@ RUN nvcc --version \
     && cd ../differentiable_renderer && pip install --no-build-isolation . \
     && python -c "import torch, hy3dgen.shapegen, custom_rasterizer; print('hy3d ok', torch.__version__)"
 
-# Weights baked in: shape (fp16), delight and paint. Skips the .bin and .ckpt copies that have a safetensors twin.
+# Weights baked in where hy3dgen looks first (HY3DGEN_MODELS), so nothing downloads at run time: shape (fp16), delight and paint. Skips the .bin and .ckpt copies that have a safetensors twin.
 RUN HF_HUB_ENABLE_HF_TRANSFER=1 python -c "from huggingface_hub import snapshot_download as s; \
 s('tencent/Hunyuan3D-2', allow_patterns=['config.json','hunyuan3d-dit-v2-0/config.yaml','hunyuan3d-dit-v2-0/model.fp16.safetensors', \
-'hunyuan3d-delight-v2-0/*','hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*.bin','*/vae/*.bin','*.ckpt'])" \
+'hunyuan3d-delight-v2-0/*','hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*.bin','*/vae/*.bin','*.ckpt'], local_dir='/opt/hy3dgen/tencent/Hunyuan3D-2')" \
     && python -c "from rembg import new_session; new_session('u2net')" \
-    && du -sh /opt/hf /opt/u2net
+    && du -sh /opt/hy3dgen /opt/u2net
 
 # CMD stays the base image's /start.sh, so SSH and Jupyter keep working.
