@@ -32,7 +32,7 @@ RUN nvcc --version \
     && cd /opt/Hunyuan3D-2 \
     && pip install -c /opt/torch-pins.txt -r requirements.txt \
     && pip install -c /opt/torch-pins.txt -e . \
-    && pip install -c /opt/torch-pins.txt rembg onnxruntime huggingface_hub hf_transfer pybind11 \
+    && pip install -c /opt/torch-pins.txt rembg onnxruntime huggingface_hub hf_transfer pybind11 "transformers==4.57.3" "diffusers==0.35.2" \
     && cd hy3dgen/texgen/custom_rasterizer && pip install --no-build-isolation . \
     && cd ../differentiable_renderer && pip install --no-build-isolation . \
     && python -c "import torch, hy3dgen.shapegen, custom_rasterizer; print('hy3d ok', torch.__version__)"
@@ -41,7 +41,8 @@ RUN nvcc --version \
 RUN HF_HUB_ENABLE_HF_TRANSFER=1 python -c "from huggingface_hub import snapshot_download as s; \
 s('tencent/Hunyuan3D-2', allow_patterns=['config.json','hunyuan3d-dit-v2-0/config.yaml','hunyuan3d-dit-v2-0/model.fp16.safetensors', \
 'hunyuan3d-delight-v2-0/*','hunyuan3d-paint-v2-0/*'], ignore_patterns=['*/unet/*.bin','*/vae/*.bin','*.ckpt'], local_dir='/opt/hy3dgen/tencent/Hunyuan3D-2')" \
-    && python -c "from rembg import new_session; new_session('u2net')" \
+    && python -c "from hy3dgen.rembg import BackgroundRemover; BackgroundRemover()" \
+    && python -c "from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline as P; P.from_pretrained('tencent/Hunyuan3D-2', subfolder='hunyuan3d-dit-v2-0', variant='fp16', use_safetensors=True, device='cpu'); print('shape model loads ok')" \
     && du -sh /opt/hy3dgen /opt/u2net
 
 # CMD stays the base image's /start.sh, so SSH and Jupyter keep working.
